@@ -1,6 +1,6 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ArrowUpRight, ChevronDown, CircleAlert, Database, FileText, LoaderCircle, Play, Search, Sparkles } from "lucide-react";
+import { ArrowUpRight, ChevronDown, CircleAlert, Database, Eye, EyeOff, FileText, LoaderCircle, Play, Search, Sparkles } from "lucide-react";
 import "./styles.css";
 
 const envApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -54,6 +54,7 @@ function App() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [showEvidence, setShowEvidence] = useState(true);
+  const [showAccessCode, setShowAccessCode] = useState(false);
   const sourceUrl = session?.source?.startsWith("http") ? session.source : "";
 
   async function handleTranscriptFileSelect(event) {
@@ -212,8 +213,9 @@ function App() {
           </div>
           <div className="form-row">
             <label className="field-label" htmlFor="access-code">Access code</label>
-            <div className="input-wrap"><Sparkles size={17} /><input id="access-code" type="password" value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="Enter access code" /></div>
+            <div className="input-wrap"><Sparkles size={17} /><input id="access-code" type={showAccessCode ? "text" : "password"} value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="Enter access code" /><button className="access-toggle" type="button" aria-label={showAccessCode ? "Hide access code" : "Show access code"} aria-pressed={showAccessCode} onClick={() => setShowAccessCode((value) => !value)}>{showAccessCode ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
           </div>
+          <p className="field-hint">Access key is required to prevent model spam and unauthorized use.</p>
           <div className="form-row transcript-row">
             <label className="field-label" htmlFor="transcript-title">Transcript title</label>
             <div className="input-wrap"><FileText size={17} /><input id="transcript-title" value={transcriptTitle} onChange={(event) => setTranscriptTitle(event.target.value)} placeholder="Optional label for manual transcript" /></div>
@@ -250,7 +252,7 @@ function App() {
           <div className="answer-grid"><article className="answer-card"><div className="answer-label"><Sparkles size={15} /> GEMINI RESPONSE</div><p>{result.answer}</p><div className="answer-source"><span>Source</span>{result.source.source?.startsWith("http") ? <a href={result.source.source} target="_blank" rel="noreferrer">{result.source.title} <ArrowUpRight size={14} /></a> : <span>{result.source.title}</span>}</div></article><aside className="evidence-card"><button className="evidence-toggle" onClick={() => setShowEvidence(!showEvidence)} type="button"><span><Search size={15} /> RETRIEVED EVIDENCE <b>{result.retrieved_chunks.length}</b></span><ChevronDown className={showEvidence ? "rotate" : ""} size={17} /></button>{showEvidence && <div className="evidence-list">{result.retrieved_chunks.map((chunk, index) => <div className="evidence-item" key={`${chunk.metadata.video_id}-${index}`}><div className="evidence-meta"><span>CHUNK {String(index + 1).padStart(2, "0")}</span><span>distance {chunk.score.toFixed(3)}</span></div><p>{chunk.text}</p></div>)}</div>}</aside></div>
         </section>}
       </section>
-      <footer><span>RAG = Retrieval + Augmentation + Generation</span><span>Context first. Answers second.</span></footer>
+      <footer><span>RAG = Retrieval + Augmentation + Generation</span><span>Context first. Answers second.</span><span className="made-by">Made by Surya <a href="https://github.com/SuryaKTiwari11/" target="_blank" rel="noreferrer">github.com/SuryaKTiwari11</a></span></footer>
     </main>
   );
 }

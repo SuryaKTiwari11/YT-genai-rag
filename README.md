@@ -2,6 +2,9 @@
 
 An interview-friendly RAG system using LangChain, YouTube transcripts, Google Gemini, Google embeddings, and FAISS.
 
+Made by Surya
+GitHub: https://github.com/SuryaKTiwari11/
+
 ## What it does
 
 1. **Accepts a YouTube URL**
@@ -10,6 +13,31 @@ An interview-friendly RAG system using LangChain, YouTube transcripts, Google Ge
 4. **Creates embeddings** with Google Generative AI
 5. **Stores chunks in FAISS** for semantic retrieval
 6. **Answers questions** using Gemini and the retrieved transcript context
+
+## End-to-End Pipeline
+
+### Web app flow (current production behavior)
+
+1. User provides a YouTube URL or transcript text/file in the frontend.
+2. Frontend sends `POST /ingest` with access code and source content.
+3. Backend validates access code and tries YouTube transcript retrieval first.
+4. If transcript retrieval fails, backend uses manual transcript fallback (paste/upload).
+5. Backend cleans text, chunks it (`chunk_size=1000`, `chunk_overlap=200`), and builds embeddings.
+6. Backend stores vectors in FAISS and returns a `session_id`.
+7. User asks a question; frontend sends `POST /ask` with `session_id` and `top_k`.
+8. Backend retrieves top-k chunks from FAISS and sends evidence context to Gemini.
+9. Gemini returns a grounded answer, and frontend displays both answer and retrieved evidence.
+
+### Deploy/request routing flow
+
+1. Frontend is hosted on Vercel.
+2. Production frontend calls `/api/*`.
+3. Vercel rewrites `/api/*` to Render backend.
+4. Render serves FastAPI endpoints (`/health`, `/ingest`, `/ask`).
+
+### Data flow summary
+
+User input -> ingest API -> transcript text -> chunking -> embeddings -> FAISS index -> retrieval -> Gemini generation -> grounded response + evidence
 
 ## Quick Start
 
@@ -62,6 +90,10 @@ The API provides:
 - `GET /health` - health check
 - `POST /ingest` - retrieve a transcript and build a FAISS session index
 - `POST /ask` - retrieve evidence and generate a grounded Gemini answer
+
+Access code note:
+
+- The access key is used to reduce model/API spam and unauthorized usage of the deployed endpoints.
 
 ### Transcript fallback behavior
 
