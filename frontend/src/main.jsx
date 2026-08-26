@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 import { ArrowUpRight, ChevronDown, CircleAlert, Database, FileText, LoaderCircle, Play, Search, Sparkles } from "lucide-react";
 import "./styles.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const envApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_BASE_URL = envApiBase || (import.meta.env.DEV ? "http://localhost:8000" : "/api");
 
 function normalizeTranscriptText(rawText) {
   const lines = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");

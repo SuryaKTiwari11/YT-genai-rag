@@ -1,5 +1,8 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://your-backend-url/$1" }
+    {
+      "source": "/api/(.*)",
+      "destination": "https://spotifychatbot.onrender.com/$1"
+    }
   ]
 }
