@@ -7,6 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 
 function App() {
   const [videoUrl, setVideoUrl] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [question, setQuestion] = useState("");
   const [session, setSession] = useState(null);
   const [result, setResult] = useState(null);
@@ -20,13 +21,14 @@ function App() {
     setResult(null);
     setSession(null);
     if (!videoUrl.trim()) return setError("Paste a YouTube URL to begin.");
+    if (!accessCode.trim()) return setError("Enter the access code to use this app.");
 
     setStatus("ingesting");
     try {
       const response = await fetch(`${API_BASE_URL}/ingest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_url: videoUrl.trim() }),
+        body: JSON.stringify({ video_url: videoUrl.trim(), access_code: accessCode.trim() }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Could not process this video.");
@@ -43,13 +45,14 @@ function App() {
     setError("");
     if (!session) return setError("Process a video before asking a question.");
     if (!question.trim()) return setError("Ask a question about the transcript.");
+    if (!accessCode.trim()) return setError("Enter the access code to use this app.");
 
     setStatus("asking");
     try {
       const response = await fetch(`${API_BASE_URL}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: session.session_id, question: question.trim(), top_k: 4 }),
+        body: JSON.stringify({ session_id: session.session_id, question: question.trim(), top_k: 4, access_code: accessCode.trim() }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Could not answer this question.");
@@ -88,8 +91,12 @@ function App() {
           <div className="form-row">
             <label className="field-label" htmlFor="video-url">YouTube URL</label>
             <div className="input-wrap"><Play size={17} /><input id="video-url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." /></div>
-            <button className="primary-button" disabled={isBusy} type="submit">{status === "ingesting" ? <LoaderCircle className="spin" size={17} /> : <Database size={17} />} {status === "ingesting" ? "Indexing..." : "Process video"}</button>
           </div>
+          <div className="form-row">
+            <label className="field-label" htmlFor="access-code">Access code</label>
+            <div className="input-wrap"><Sparkles size={17} /><input id="access-code" type="password" value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="Enter access code" /></div>
+          </div>
+          <button className="primary-button" disabled={isBusy} type="submit">{status === "ingesting" ? <LoaderCircle className="spin" size={17} /> : <Database size={17} />} {status === "ingesting" ? "Indexing..." : "Process video"}</button>
           {session && <div className="source-summary"><span className="success-mark">✓</span><strong>{session.title}</strong><span>{session.chunk_count} searchable chunks</span><a href={session.source} target="_blank" rel="noreferrer">Open source <ArrowUpRight size={14} /></a></div>}
         </form>
 

@@ -30,6 +30,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise RuntimeError("GOOGLE_API_KEY is not configured.")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+ACCESS_CODE = os.getenv("ACCESS_CODE", "205442")
 
 allowed_origins = [
     origin.strip()
@@ -79,12 +80,19 @@ sessions: dict[str, dict[str, Any]] = {}
 
 class IngestRequest(BaseModel):
     video_url: str = Field(min_length=1)
+    access_code: str | None = None
 
 
 class AskRequest(BaseModel):
     session_id: str = Field(min_length=1)
     question: str = Field(min_length=1)
     top_k: int = Field(default=4, ge=1, le=10)
+    access_code: str | None = None
+
+
+def validate_access_code(code: str | None) -> None:
+    if ACCESS_CODE and code != ACCESS_CODE:
+        raise HTTPException(status_code=403, detail="Invalid access code.")
 
 
 def extract_video_id(video_url: str) -> str:
@@ -149,6 +157,11 @@ def create_chunks(transcript: dict[str, str]) -> list[Document]:
     return splitter.split_documents([document])
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"message": "YouTube Transcript RAG API is running", "health": "/health"}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -157,6 +170,7 @@ def health() -> dict[str, str]:
 @app.post("/ingest")
 def ingest(request: IngestRequest) -> dict[str, Any]:
     try:
+        validate_access_code(request.access_code)
         transcript = fetch_transcript(request.video_url)
         chunks = create_chunks(transcript)
         vectorstore = FAISS.from_documents(chunks, embeddings)
@@ -196,6 +210,11 @@ def ingest(request: IngestRequest) -> dict[str, Any]:
 
 @app.post("/ask")
 def ask(request: AskRequest) -> dict[str, Any]:
+    try:
+        validate_access_code(request.access_code)
+    except HTTPException:
+        raise
+
     session = sessions.get(request.session_id)
     if not session:
         raise HTTPException(
