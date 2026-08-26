@@ -53,7 +53,7 @@ embeddings = GoogleGenerativeAIEmbeddings(
 )
 llm = ChatGoogleGenerativeAI(
     model=GEMINI_MODEL,
-    temperature=0.2,
+    temperature=0.0,
     google_api_key=GOOGLE_API_KEY,
 )
 
@@ -61,13 +61,22 @@ PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You are a grounded YouTube transcript assistant.
-Answer using ONLY the retrieved transcript context.
-Do not invent facts. If the context is insufficient, say that the transcript does not contain enough information.
-Distinguish what the speaker says from reasonable interpretation. Keep the answer concise.
-Mention the source video when useful.
+            """You are a strict transcript QA assistant.
 
-Retrieved context:
+Rules:
+1) Use ONLY retrieved evidence blocks below.
+2) Never invent names, events, or details not present in evidence.
+3) If evidence is insufficient, say: "The transcript evidence is not sufficient to answer that confidently."
+4) Prefer direct wording from transcript when possible.
+5) Keep responses compact and useful.
+
+Output format:
+- First line: a direct answer in 1-2 sentences.
+- Then a section titled "Evidence:" with 2-4 bullet points.
+- Each bullet must include a short quote and citation like [E1], [E2].
+- If the user asks for a list, provide a short numbered list before "Evidence:".
+
+Retrieved evidence blocks:
 {context}""",
         ),
         ("human", "Question: {question}"),
@@ -144,15 +153,12 @@ def fetch_transcript(video_url: str) -> dict[str, str]:
         raise RuntimeError("No transcript could be retrieved for this video.")
 
     fetched = transcript.fetch()
-    text = re.sub(
-        r"\s+",
-        " ",
-        " ".join(
-            segment.text.strip()
-            for segment in fetched
-            if getattr(segment, "text", "").strip()
-        ),
-    ).strip()
+    cleaned_segments = [
+        re.sub(r"\s+", " ", segment.text.strip())
+        for segment in fetched
+        if getattr(segment, "text", "").strip()
+    ]
+    text = "\n".join(cleaned_segments).strip()
 
     if not text:
         raise RuntimeError("No transcript could be retrieved for this video.")
@@ -182,7 +188,8 @@ def normalize_transcript_text(raw_text: str) -> str:
             continue
         cleaned_lines.append(stripped)
 
-    return re.sub(r"\s+", " ", " ".join(cleaned_lines)).strip()
+    normalized_lines = [re.sub(r"\s+", " ", line) for line in cleaned_lines]
+    return "\n".join(normalized_lines).strip()
 
 
 def build_manual_transcript(request: IngestRequest) -> dict[str, str] | None:
@@ -321,8 +328,8 @@ def ask(request: AskRequest) -> dict[str, Any]:
         k=request.top_k,
     )
     context = "\n\n".join(
-        f"[Chunk {index} | {document.metadata['title']}]\n{document.page_content}"
-        for index, (document, _) in enumerate(scored_documents, start=1)
+        f"[E{index}] title={document.metadata['title']} distance={float(score):.3f}\n{document.page_content}"
+        for index, (document, score) in enumerate(scored_documents, start=1)
     )
     try:
         answer = rag_chain.invoke({"question": request.question, "context": context})
