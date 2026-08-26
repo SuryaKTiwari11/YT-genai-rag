@@ -87,3 +87,7 @@ The frontend runs at `http://localhost:5173` and calls the backend at `http://lo
 The Google API key stays on the backend. Set `CORS_ORIGINS` on the backend to the deployed frontend URL when hosting the app.
 
 Docker is optional. The frontend can be deployed to Vercel or Netlify, and the FastAPI backend can be deployed to Render, Railway, Fly.io, or Cloud Run. FAISS is currently held in memory per ingest session, which is appropriate for a simple demo; persistent storage should be added before multi-instance production use.
+
+## Interview Prep Notes
+
+For a full interview-ready explanation of pipeline, production flow, stack choices, alternatives, tradeoffs, and a 60-second pitch, see [END_TO_END_LOGIC.md](END_TO_END_LOGIC.md).

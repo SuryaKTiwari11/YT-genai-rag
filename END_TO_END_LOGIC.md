@@ -128,3 +128,64 @@ If you rerun after editing methods, rerun the definition cells before the final 
 ## 7) Summary in one line
 
 Your notebook is a pipeline that converts a YouTube URL into transcript chunks, indexes them semantically, retrieves relevant evidence for a user question, and generates a grounded natural-language answer with Gemini.
+
+## 8) Interview-Ready Pipeline (What Happens Now)
+
+Use this when interviewers ask "walk me through your system."
+
+1. Frontend sends `POST /ingest` with YouTube URL (optional), manual transcript text/file (optional), and access code.
+2. Backend validates access code and tries YouTube transcript retrieval first.
+3. If YouTube transcript retrieval fails, backend falls back to manual transcript if provided.
+4. Transcript text is cleaned and split into chunks (1000 size, 200 overlap).
+5. Chunks are embedded with Gemini embeddings and indexed in FAISS.
+6. Backend returns a `session_id` that represents this in-memory vector index.
+7. Frontend sends `POST /ask` with `session_id`, question, and `top_k`.
+8. Backend retrieves top-k similar chunks with FAISS.
+9. Backend builds evidence-labeled context (`E1`, `E2`, etc.) and prompts Gemini.
+10. Gemini returns a grounded answer plus evidence-backed response formatting.
+11. Frontend renders answer and retrieved chunks with scores for transparency.
+
+## 9) Current Request Flow (Production)
+
+1. Vercel frontend calls `/api/*` in production.
+2. Vercel rewrite forwards `/api/*` to Render backend.
+3. Render backend handles CORS using normalized origins (trailing slash safe).
+4. Render returns API response to frontend.
+
+Important current behavior:
+
+1. Backend health endpoint is reachable.
+2. Some YouTube transcript requests can fail with `IpBlocked` from the transcript provider.
+3. Manual transcript paste/upload remains the reliability fallback for demos.
+
+## 10) Tech Stack, Why We Used It, and Alternatives
+
+| Layer | Chosen | Why This Choice | Alternative(s) | Why Not Chosen (for this project) |
+|---|---|---|---|---|
+| API server | FastAPI | Fast to build, async-friendly, strong validation with Pydantic, easy docs/testing | Flask, Django, Express | Flask needs more manual validation; Django is heavier than needed; Express would split language stack |
+| LLM orchestration | LangChain | Standard RAG building blocks, prompt templates, retriever chain style, quick iteration | LlamaIndex, custom orchestration | LlamaIndex also good but team familiarity favored LangChain; custom orchestration adds boilerplate |
+| Embeddings + generation | Gemini (Google GenAI) | Good quality, same provider for embeddings and generation, simple integration | OpenAI, Claude, open-source local models | Cost/ops and setup complexity were higher for this demo scope |
+| Vector database | FAISS (in-memory) | Very fast local similarity search, zero infra overhead, perfect for demo/interview | Pinecone, Weaviate, Qdrant, pgvector | Managed/vector DB infra is better for scale but unnecessary overhead for a single-session demo |
+| Transcript source | youtube-transcript-api | Direct caption retrieval without downloading video, simple API | YouTube Data API + caption pipeline, scraping | Data API setup is more complex; scraping is brittle and risky |
+| Frontend | React + Vite + Tailwind | Fast UI iteration, good DX, lightweight deploy | Next.js, plain JS, Vue | Next.js is more than needed; plain JS slows maintainability; team preference was React |
+| Deployment | Vercel (frontend) + Render (backend) | Simple CI/CD, easy env vars, low setup friction | AWS/GCP full stack, Fly.io, Railway | Cloud-native setups are stronger at scale but higher setup and interview-demo overhead |
+
+## 11) Tradeoffs You Can Say in Interview
+
+1. "I optimized for delivery speed and clarity over scale-first architecture."
+2. "FAISS in memory is fast and simple, but not persistent across restarts."
+3. "RAG grounding improves factuality, but quality still depends on transcript quality and retrieval quality."
+4. "I added a manual transcript fallback so the product still works when external transcript providers are blocked."
+5. "For production scale, I would move session storage and vectors to persistent infrastructure."
+
+## 12) What I Would Upgrade Next (Production Plan)
+
+1. Persistent vector storage (Qdrant/Pinecone/pgvector) and session persistence (Redis/Postgres).
+2. Better retrieval quality: reranking and duplicate-chunk suppression.
+3. Observability: structured logs, tracing, latency/error dashboards.
+4. Background jobs for ingest and retry strategies for transcript fetching.
+5. Security hardening: strict secret rotation, rate limits, and auth beyond single access code.
+
+## 13) 60-Second Interview Pitch
+
+"This is a transcript-grounded RAG system. The frontend sends a video URL or manual transcript to a FastAPI backend. The backend cleans and chunks transcript text, builds Gemini embeddings, and indexes them in FAISS. At question time, it retrieves the top relevant chunks and asks Gemini to answer strictly from that evidence. If YouTube transcript retrieval fails due to provider or network issues, the system falls back to user-provided transcript text or file upload so the workflow still works. I chose this stack to maximize speed, grounding, and demo reliability, while keeping a clear path to production upgrades like persistent vector storage and reranking." 
