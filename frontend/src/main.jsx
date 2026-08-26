@@ -5,6 +5,25 @@ import "./styles.css";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+async function parseErrorPayload(response) {
+  try {
+    const payload = await response.clone().json();
+    if (payload?.detail) return payload.detail;
+    if (payload?.message) return payload.message;
+  } catch {
+    // ignore JSON parse errors and fall through to text parsing
+  }
+
+  try {
+    const text = await response.text();
+    if (text) return text;
+  } catch {
+    // ignore text parse errors
+  }
+
+  return "The request failed. Please try again.";
+}
+
 function App() {
   const [videoUrl, setVideoUrl] = useState("");
   const [accessCode, setAccessCode] = useState("");
@@ -30,12 +49,20 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_url: videoUrl.trim(), access_code: accessCode.trim() }),
       });
+
+      if (!response.ok) {
+        const message = await parseErrorPayload(response);
+        throw new Error(message);
+      }
+
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || "Could not process this video.");
       setSession(payload);
       setStatus("ready");
     } catch (requestError) {
-      setError(requestError.message);
+      const message = requestError instanceof TypeError
+        ? "Could not reach the backend. Check the API URL and backend status."
+        : requestError.message || "Could not process this video.";
+      setError(message);
       setStatus("idle");
     }
   }
@@ -54,12 +81,20 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: session.session_id, question: question.trim(), top_k: 4, access_code: accessCode.trim() }),
       });
+
+      if (!response.ok) {
+        const message = await parseErrorPayload(response);
+        throw new Error(message);
+      }
+
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || "Could not answer this question.");
       setResult(payload);
       setStatus("ready");
     } catch (requestError) {
-      setError(requestError.message);
+      const message = requestError instanceof TypeError
+        ? "Could not reach the backend. Check the API URL and backend status."
+        : requestError.message || "Could not answer this question.";
+      setError(message);
       setStatus("ready");
     }
   }
