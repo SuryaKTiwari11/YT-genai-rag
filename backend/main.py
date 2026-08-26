@@ -79,7 +79,10 @@ sessions: dict[str, dict[str, Any]] = {}
 
 
 class IngestRequest(BaseModel):
-    video_url: str = Field(min_length=1)
+    video_url: str | None = None
+    transcript_text: str | None = None
+    transcript_title: str | None = None
+    transcript_source: str | None = None
     access_code: str | None = None
 
 
@@ -118,17 +121,39 @@ def fetch_transcript(video_url: str) -> dict[str, str]:
     video_id = extract_video_id(video_url)
     api = YouTubeTranscriptApi()
     transcript_list = api.list(video_id)
-    try:
-        transcript = transcript_list.find_manually_created_transcript(["en"])
-    except NoTranscriptFound:
-        transcript = transcript_list.find_generated_transcript(["en"])
+
+    language_codes = ["en", "en-US", "en-GB", "en-AU"]
+    transcript = None
+
+    for lang in language_codes:
+        try:
+            transcript = transcript_list.find_manually_created_transcript([lang])
+            break
+        except NoTranscriptFound:
+            continue
+
+    if transcript is None:
+        for lang in language_codes:
+            try:
+                transcript = transcript_list.find_generated_transcript([lang])
+                break
+            except NoTranscriptFound:
+                continue
+
+    if transcript is None:
+        raise RuntimeError("No transcript could be retrieved for this video.")
 
     fetched = transcript.fetch()
     text = re.sub(
         r"\s+",
         " ",
-        " ".join(segment.text.strip() for segment in fetched if segment.text.strip()),
+        " ".join(
+            segment.text.strip()
+            for segment in fetched
+            if getattr(segment, "text", "").strip()
+        ),
     ).strip()
+
     if not text:
         raise RuntimeError("No transcript could be retrieved for this video.")
 
@@ -137,6 +162,56 @@ def fetch_transcript(video_url: str) -> dict[str, str]:
         "source": f"https://www.youtube.com/watch?v={video_id}",
         "title": f"YouTube video ({video_id})",
         "transcript": text,
+    }
+
+
+def normalize_transcript_text(raw_text: str) -> str:
+    lines = raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    cleaned_lines: list[str] = []
+    timestamp_pattern = re.compile(
+        r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$"
+    )
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.isdigit():
+            continue
+        if timestamp_pattern.match(stripped):
+            continue
+        cleaned_lines.append(stripped)
+
+    return re.sub(r"\s+", " ", " ".join(cleaned_lines)).strip()
+
+
+def build_manual_transcript(request: IngestRequest) -> dict[str, str] | None:
+    if not request.transcript_text or not request.transcript_text.strip():
+        return None
+
+    normalized_text = normalize_transcript_text(request.transcript_text)
+    if not normalized_text:
+        raise ValueError("Transcript text is empty after cleanup.")
+
+    source = (request.transcript_source or "Manual transcript upload").strip()
+    title = (request.transcript_title or "Manual transcript").strip()
+    video_id = "manual"
+
+    if request.video_url and request.video_url.strip():
+        try:
+            video_id = extract_video_id(request.video_url)
+            source = request.video_url.strip()
+            if not request.transcript_title:
+                title = f"Manual transcript for video ({video_id})"
+        except ValueError:
+            # Keep manual transcript usable even when the URL is malformed.
+            pass
+
+    return {
+        "video_id": video_id,
+        "source": source,
+        "title": title,
+        "transcript": normalized_text,
     }
 
 
@@ -169,25 +244,45 @@ def health() -> dict[str, str]:
 
 @app.post("/ingest")
 def ingest(request: IngestRequest) -> dict[str, Any]:
+    manual_transcript: dict[str, str] | None = None
     try:
         validate_access_code(request.access_code)
-        transcript = fetch_transcript(request.video_url)
+        manual_transcript = build_manual_transcript(request)
+
+        if request.video_url and request.video_url.strip():
+            try:
+                transcript = fetch_transcript(request.video_url.strip())
+            except (
+                TranscriptsDisabled,
+                NoTranscriptFound,
+                CouldNotRetrieveTranscript,
+                VideoUnavailable,
+                RuntimeError,
+            ) as transcript_error:
+                if manual_transcript is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "code": "transcript_unavailable",
+                            "message": "No transcript could be retrieved for this video.",
+                            "hint": "Paste transcript text or upload a .txt/.srt transcript to continue.",
+                            "provider_error": type(transcript_error).__name__,
+                        },
+                    ) from transcript_error
+                transcript = manual_transcript
+        elif manual_transcript is not None:
+            transcript = manual_transcript
+        else:
+            raise ValueError(
+                "Provide a YouTube URL or transcript text to start ingestion."
+            )
+
         chunks = create_chunks(transcript)
         vectorstore = FAISS.from_documents(chunks, embeddings)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    except (
-        TranscriptsDisabled,
-        NoTranscriptFound,
-        CouldNotRetrieveTranscript,
-        VideoUnavailable,
-    ) as error:
-        raise HTTPException(
-            status_code=422,
-            detail="No transcript could be retrieved for this video. Try another video with captions enabled.",
-        ) from error
-    except RuntimeError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    except HTTPException:
+        raise
     except Exception as error:
         raise HTTPException(
             status_code=502, detail=f"Transcript service error: {error}"

@@ -63,6 +63,16 @@ The API provides:
 - `POST /ingest` - retrieve a transcript and build a FAISS session index
 - `POST /ask` - retrieve evidence and generate a grounded Gemini answer
 
+### Transcript fallback behavior
+
+The app now uses a resilient ingest strategy:
+
+1. It first attempts server-side YouTube transcript retrieval.
+2. If YouTube transcript access is blocked/disabled/unavailable, users can still proceed with manual transcript input.
+3. Manual input supports pasted transcript text and `.txt`/`.srt` uploads from the frontend.
+
+For demo and recruiter walkthroughs, the frontend also includes a built-in sample `.srt` option to test the full RAG pipeline without depending on live YouTube transcript access.
+
 ### Frontend
 
 ```bash
